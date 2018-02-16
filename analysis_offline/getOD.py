@@ -13,9 +13,12 @@ import matplotlib.gridspec as gridspec
 from pylab import *
 from time import time
 from scipy.ndimage import *
+from common.OD_handler import ODslice
+import fit_table
+from common.traces import bimodal1D
 
 # Parameters
-pixel_size = 5.6e-6/5.33  # Divided by Magnification Factor
+pixel_size = 5.6e-6/1.19  # Divided by Magnification Factor
 sigma0 = 3*(780.24e-9)**2/(2*np.pi)  # Atomic cross section (resonant absorption imaging)
 
 def get_all_files(sequence_path, ongoing=True):
@@ -123,32 +126,94 @@ def get_data_from_shots(path, shot_list, return_global=False):
         return np.array(OD), np.array(atoms), np.array(probe), np.array(bckg), np.array(glob)
     else: 
         return np.array(OD), np.array(atoms), np.array(probe), np.array(bckg)
-        
+#operations:
+plot_OD = True
+plot_N = False
+vs_variable = " "
+get_results = False
+
+
 OD, atoms, probe, bckg = get_data_from_shots(path_1, shots_list_1, return_global=False)
+if get_results:
+    l = len(OD)
+    N = np.zeros(l, dtype=int)
+    max_OD = np.zeros(l, dtype=int)
+    fit_x = np.zeros((2,l))#0 is center, 1 is width
+    fit_y = np.zeros((2,l))
+    for sh in range(l):
+        
+        N[sh] = np.sum((OD[sh].T[::-1,][300:540,100:400]/sigma0)*pixel_size**2)
+        max_OD[sh] = np.amax(OD[sh].T[::-1,][100:350,150:400],axis=None)
+            
+            
+        ycolOD, y_ax = np.mean(np.array(OD[sh][:, 260:280]), axis=1), np.linspace(0, 648, 648)
+       
+        _yslice_ = ODslice(slice_OD=ycolOD, slice_axis=y_ax)
+        try:
+            y_gauss_pars, y_dense_gauss, y_gaussian_fit = _yslice_.fit_gauss()
+            #y_tf_pars, x_dense_tf, y_TF_fit = _yslice_.fit_pure_thomas_fermi()
+            #y_bimodal_pars, y_dense_bimodal, y_bimodal_fit =_yslice_.fit_bimodal()
+            fit_y_success = True
+            print 'y slice fit'
+            fit_table.get_params(y_gauss_pars)
+            fit_y[0,sh] = np.abs(y_gauss_pars[1]*pixel_size/1e-6)
+            fit_y[1,sh] = np.abs(y_gauss_pars[2]*pixel_size/1e-6)
+            
+                
+        except Exception as e:
+            fit_y_success = False
+            print 'Fit of y slice unsuccessful, %s' %e
+            
+        xcolOD, x_ax = np.mean(np.array(OD[sh][int(y_gauss_pars[1])-5:int(y_gauss_pars[1])+5, :]), axis=0), np.linspace(0,488, 488)
+        _xslice_ = ODslice(slice_OD=xcolOD, slice_axis=x_ax)
+        try:
+            x_gauss_pars, x_dense_gauss, x_gaussian_fit =_xslice_.fit_gauss()
+            #x_tf_pars, x_dense_tf, x_TF_fit = _xslice_.fit_pure_thomas_fermi()
+            #x_bimodal_pars, x_dense_bimodal, x_bimodal_fit =_xslice_.fit_bimodal()
+            fit_x_success = True
+            print 'x slice fit'
+            fit_table.get_params(x_gauss_pars)
+            fit_x[0,sh] = np.abs(x_gauss_pars[1]*pixel_size/1e-6)
+            fit_x[1,sh] = np.abs(x_gauss_pars[2]*pixel_size/1e-6)
+            
+            
+        except Exception as e:
+            fit_x_success = False
+            print 'Fit of x slice unsuccessful, %s' %e
+        
+        
+        
 
+if plot_OD:
+        
+    
+    
+    
+    
+    fig  = figure(1, figsize=(16,16), frameon=False)
+    gs = gridspec.GridSpec(2, 2, width_ratios=[1,1], height_ratios=[1,1])
+    subplot(gs[0])
+    im0= plt.imshow(OD[0].T[::-1,], vmin= -0.0, vmax =2.8,  cmap='RdYlBu_r', aspect=0.75, interpolation='none')
+    colorbar(im0)
+    title('OD_TOF atom#= + str(N)')
+    
+    subplot(gs[1])
+    im1= imshow(atoms[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
+    colorbar(im1)
+    title('atoms_TOF')
+    
+    subplot(gs[2])
+    im2= imshow(probe[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
+    colorbar(im2)
+    title('probe_TOF')
+    
+    subplot(gs[3])
+    im3= imshow(bckg[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
+    colorbar(im3)
+    title('bckg_TOF')
 
-
-fig  = figure(1, figsize=(16,16), frameon=False)
-gs = gridspec.GridSpec(2, 2, width_ratios=[1,1], height_ratios=[1,1])
-subplot(gs[0])
-im0= plt.imshow(OD[0].T[::-1,], vmin= -0.0, vmax =2.8,  cmap='RdYlBu_r', aspect=0.75, interpolation='none')
-colorbar(im0)
-title('OD_TOF atom#= + str(N)')
-
-subplot(gs[1])
-im1= imshow(atoms[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
-colorbar(im1)
-title('atoms_TOF')
-
-subplot(gs[2])
-im2= imshow(probe[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
-colorbar(im2)
-title('probe_TOF')
-
-subplot(gs[3])
-im3= imshow(bckg[0].T[::-1,], vmin= -0.0, cmap='RdYlBu_r', aspect=0.75, interpolation='none')
-colorbar(im3)
-title('bckg_TOF')
+if plot_N:
+    
 
 
 
